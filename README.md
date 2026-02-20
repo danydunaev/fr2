@@ -28,5 +28,5 @@
 
 ### 1. Клонирование репозитория
 ```bash
-git clone <url-репозитория>
+git clone <https://github.com/danydunaev/fr2>
 cd internet-shop
