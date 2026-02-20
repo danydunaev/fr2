@@ -29,4 +29,5 @@
 ### 1. Клонирование репозитория
 ```bash
 git clone <https://github.com/danydunaev/fr2>
-cd internet-shop
+cd fr2
+
