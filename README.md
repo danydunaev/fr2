@@ -30,6 +30,7 @@
 ```bash
 git clone <https://github.com/danydunaev/fr2>
 cd fr2
+<<<<<<< HEAD
 npm install express nanoid cors swagger-jsdoc swagger-ui-express
 cd ../server
 server node index.js
@@ -56,3 +57,6 @@ GET	/api/products/{id}	Получить товар по ID
 POST	/api/products	Создать новый товар
 PATCH	/api/products/{id}	Частичное обновление товара
 DELETE	/api/products/{id}	Удалить товар
+=======
+
+>>>>>>> e4c5775095e3c59d355fb7b4b492637390c43c72
