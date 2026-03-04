@@ -1,14 +1,22 @@
 const express = require('express');
 const { nanoid } = require('nanoid');
 const cors = require('cors');
-// Подключаем Swagger
+const bcrypt = require('bcryptjs'); // или bcrypt
+const jwt = require('jsonwebtoken'); // <-- добавили jsonwebtoken
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 
 const app = express();
 const port = 3000;
 
-// Начальные данные — 10 товаров (минимум) - ВАШИ ДАННЫЕ СОХРАНЕНЫ
+// JWT секреты и настройки
+const JWT_SECRET = 'your-secret-key-change-this'; // В продакшене используйте .env
+const ACCESS_EXPIRES_IN = '15m'; // 15 минут
+
+// Хранилище пользователей (в памяти)
+let users = [];
+
+// Начальные данные — 10 товаров (минимум) - сохранены
 let products = [
   { id: nanoid(6), name: 'Ноутбук', category: 'Электроника', description: 'Мощный игровой ноутбук', price: 1200, stock: 5, rating: 4.5, image: 'https://via.placeholder.com/150' },
   { id: nanoid(6), name: 'Смартфон', category: 'Электроника', description: 'Флагманский смартфон', price: 800, stock: 10, rating: 4.7, image: 'https://via.placeholder.com/150' },
@@ -28,8 +36,8 @@ app.use(express.json());
 // Настройка CORS — разрешаем запросы с клиента (порт 3001)
 app.use(cors({
   origin: 'http://localhost:3001',
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'] // Authorization header для JWT
 }));
 
 // Middleware для логирования запросов
@@ -43,14 +51,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Swagger definition
+// ==================== Swagger настройки ====================
 const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'API управления товарами',
+      title: 'API интернет-магазина с JWT аутентификацией',
       version: '1.0.0',
-      description: 'API для управления товарами интернет-магазина',
+      description: 'API для управления товарами с JWT токенами',
     },
     servers: [
       {
@@ -58,19 +66,57 @@ const swaggerOptions = {
         description: 'Локальный сервер',
       },
     ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+    },
   },
-  apis: ['./index.js'], // Путь к текущему файлу
+  apis: ['./index.js'],
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
-
-// Подключаем Swagger UI по адресу /api-docs
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+// ==================== Схемы для Swagger ====================
 /**
  * @swagger
  * components:
  *   schemas:
+ *     User:
+ *       type: object
+ *       required:
+ *         - email
+ *         - first_name
+ *         - last_name
+ *         - password
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: Уникальный идентификатор пользователя
+ *         email:
+ *           type: string
+ *           format: email
+ *           description: Email пользователя (логин)
+ *         first_name:
+ *           type: string
+ *           description: Имя
+ *         last_name:
+ *           type: string
+ *           description: Фамилия
+ *         password:
+ *           type: string
+ *           description: Пароль (не возвращается в ответах)
+ *       example:
+ *         id: "abc123"
+ *         email: "ivan@example.com"
+ *         first_name: "Иван"
+ *         last_name: "Петров"
+ *         password: "secret"
  *     Product:
  *       type: object
  *       required:
@@ -115,7 +161,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
  *         image: "https://via.placeholder.com/150"
  */
 
-// Вспомогательная функция для поиска товара по id
+// ==================== Вспомогательные функции ====================
+
+// Поиск товара по id
 function findProductOr404(id, res) {
   const product = products.find(p => p.id === id);
   if (!product) {
@@ -124,6 +172,228 @@ function findProductOr404(id, res) {
   }
   return product;
 }
+
+// Поиск пользователя по email
+function findUserByEmail(email, res) {
+  const user = users.find(u => u.email === email);
+  if (!user) {
+    if (res) res.status(404).json({ error: "User not found" });
+    return null;
+  }
+  return user;
+}
+
+// Хеширование пароля
+async function hashPassword(password) {
+  const saltRounds = 10;
+  return bcrypt.hash(password, saltRounds);
+}
+
+// Проверка пароля
+async function verifyPassword(password, hashedPassword) {
+  return bcrypt.compare(password, hashedPassword);
+}
+
+// ==================== JWT MIDDLEWARE ====================
+/**
+ * Middleware для проверки JWT токена
+ * Ожидает заголовок: Authorization: Bearer <token>
+ */
+function authMiddleware(req, res, next) {
+  const header = req.headers.authorization || '';
+  // Ожидаем формат: Bearer <token>
+  const [scheme, token] = header.split(' ');
+
+  if (scheme !== 'Bearer' || !token) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    // сохраняем данные токена в req
+    req.user = payload; // { sub: userId, email, iat, exp }
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+// ==================== МАРШРУТЫ АУТЕНТИФИКАЦИИ ====================
+
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Регистрация нового пользователя
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - first_name
+ *               - last_name
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               first_name:
+ *                 type: string
+ *               last_name:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Пользователь успешно создан
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Некорректные данные или email уже занят
+ */
+app.post('/api/auth/register', async (req, res) => {
+  const { email, first_name, last_name, password } = req.body;
+
+  if (!email || !first_name || !last_name || !password) {
+    return res.status(400).json({ error: 'Все поля обязательны' });
+  }
+
+  // Проверка уникальности email
+  if (users.some(u => u.email === email)) {
+    return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
+  }
+
+  const hashedPassword = await hashPassword(password);
+  const newUser = {
+    id: nanoid(6),
+    email,
+    first_name,
+    last_name,
+    password: hashedPassword
+  };
+  users.push(newUser);
+
+  // Не возвращаем пароль в ответе
+  const { password: _, ...userWithoutPassword } = newUser;
+  res.status(201).json(userWithoutPassword);
+});
+
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Вход в систему
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Успешный вход, возвращает JWT токен
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken:
+ *                   type: string
+ *                   description: JWT токен для доступа к защищенным маршрутам
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Отсутствуют обязательные поля
+ *       401:
+ *         description: Неверный email или пароль
+ */
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email и пароль обязательны' });
+  }
+
+  const user = users.find(u => u.email === email);
+  if (!user) {
+    return res.status(401).json({ error: 'Неверный email или пароль' });
+  }
+
+  const isValid = await verifyPassword(password, user.password);
+  if (!isValid) {
+    return res.status(401).json({ error: 'Неверный email или пароль' });
+  }
+
+  // Создание JWT токена
+  const accessToken = jwt.sign(
+    {
+      sub: user.id,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name
+    },
+    JWT_SECRET,
+    {
+      expiresIn: ACCESS_EXPIRES_IN,
+    }
+  );
+
+  // Не возвращаем пароль
+  const { password: _, ...userWithoutPassword } = user;
+  res.status(200).json({
+    accessToken,
+    user: userWithoutPassword
+  });
+});
+
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     summary: Получить информацию о текущем пользователе
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Данные текущего пользователя
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Не авторизован (токен отсутствует или недействителен)
+ */
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  const userId = req.user.sub;
+  const user = users.find(u => u.id === userId);
+  
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  // Не возвращаем пароль
+  const { password: _, ...userWithoutPassword } = user;
+  res.json(userWithoutPassword);
+});
+
+// ==================== ПУБЛИЧНЫЕ МАРШРУТЫ ДЛЯ ТОВАРОВ ====================
 
 /**
  * @swagger
@@ -170,7 +440,6 @@ function findProductOr404(id, res) {
  */
 app.post('/api/products', (req, res) => {
   const { name, category, description, price, stock, rating, image } = req.body;
-  // Проверяем обязательные поля
   if (!name || !category || !description || price === undefined || stock === undefined) {
     return res.status(400).json({ error: "Missing required fields" });
   }
@@ -210,10 +479,77 @@ app.get('/api/products', (req, res) => {
 
 /**
  * @swagger
+ * /api/products/paged:
+ *   get:
+ *     summary: Возвращает список товаров с пагинацией
+ *     tags: [Products]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Номер страницы
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 5
+ *         description: Количество товаров на странице
+ *     responses:
+ *       200:
+ *         description: Список товаров с пагинацией
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Product'
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ */
+app.get('/api/products/paged', (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 5;
+  
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  
+  const paginatedProducts = products.slice(startIndex, endIndex);
+  
+  res.json({
+    data: paginatedProducts,
+    pagination: {
+      page,
+      limit,
+      total: products.length,
+      pages: Math.ceil(products.length / limit)
+    }
+  });
+});
+
+// ==================== ЗАЩИЩЕННЫЕ МАРШРУТЫ (требуют JWT) ====================
+
+/**
+ * @swagger
  * /api/products/{id}:
  *   get:
- *     summary: Получает товар по ID
+ *     summary: Получает товар по ID (защищенный маршрут)
  *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -228,10 +564,12 @@ app.get('/api/products', (req, res) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Product'
+ *       401:
+ *         description: Не авторизован
  *       404:
  *         description: Товар не найден
  */
-app.get('/api/products/:id', (req, res) => {
+app.get('/api/products/:id', authMiddleware, (req, res) => {
   const id = req.params.id;
   const product = findProductOr404(id, res);
   if (!product) return;
@@ -241,8 +579,120 @@ app.get('/api/products/:id', (req, res) => {
 /**
  * @swagger
  * /api/products/{id}:
+ *   put:
+ *     summary: Полностью обновляет товар (защищенный маршрут)
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: ID товара
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - category
+ *               - description
+ *               - price
+ *               - stock
+ *             properties:
+ *               name:
+ *                 type: string
+ *               category:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               price:
+ *                 type: number
+ *               stock:
+ *                 type: integer
+ *               rating:
+ *                 type: number
+ *               image:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Обновленный товар
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Product'
+ *       400:
+ *         description: Ошибка в теле запроса
+ *       401:
+ *         description: Не авторизован
+ *       404:
+ *         description: Товар не найден
+ */
+app.put('/api/products/:id', authMiddleware, (req, res) => {
+  const id = req.params.id;
+  const product = findProductOr404(id, res);
+  if (!product) return;
+
+  const { name, category, description, price, stock, rating, image } = req.body;
+  // При PUT все поля обязательны (кроме rating и image, они опциональны)
+  if (!name || !category || !description || price === undefined || stock === undefined) {
+    return res.status(400).json({ error: "Missing required fields for PUT" });
+  }
+
+  // Полное обновление
+  product.name = name.trim();
+  product.category = category.trim();
+  product.description = description.trim();
+  product.price = Number(price);
+  product.stock = Number(stock);
+  product.rating = rating ? Number(rating) : null;
+  product.image = image || null;
+
+  res.json(product);
+});
+
+/**
+ * @swagger
+ * /api/products/{id}:
+ *   delete:
+ *     summary: Удаляет товар (защищенный маршрут)
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: ID товара
+ *     responses:
+ *       204:
+ *         description: Товар успешно удален (нет тела ответа)
+ *       401:
+ *         description: Не авторизован
+ *       404:
+ *         description: Товар не найден
+ */
+app.delete('/api/products/:id', authMiddleware, (req, res) => {
+  const id = req.params.id;
+  const exists = products.some(p => p.id === id);
+  if (!exists) return res.status(404).json({ error: "Product not found" });
+  products = products.filter(p => p.id !== id);
+  res.status(204).send();
+});
+
+// ==================== ПУБЛИЧНЫЙ PATCH (оставлен для обратной совместимости) ====================
+
+/**
+ * @swagger
+ * /api/products/{id}:
  *   patch:
- *     summary: Обновляет данные товара
+ *     summary: Частично обновляет данные товара (публичный маршрут)
  *     tags: [Products]
  *     parameters:
  *       - in: path
@@ -289,7 +739,6 @@ app.patch('/api/products/:id', (req, res) => {
   const product = findProductOr404(id, res);
   if (!product) return;
 
-  // Проверяем, есть ли что обновлять
   if (Object.keys(req.body).length === 0) {
     return res.status(400).json({ error: "Nothing to update" });
   }
@@ -306,33 +755,6 @@ app.patch('/api/products/:id', (req, res) => {
   res.json(product);
 });
 
-/**
- * @swagger
- * /api/products/{id}:
- *   delete:
- *     summary: Удаляет товар
- *     tags: [Products]
- *     parameters:
- *       - in: path
- *         name: id
- *         schema:
- *           type: string
- *         required: true
- *         description: ID товара
- *     responses:
- *       204:
- *         description: Товар успешно удален (нет тела ответа)
- *       404:
- *         description: Товар не найден
- */
-app.delete('/api/products/:id', (req, res) => {
-  const id = req.params.id;
-  const exists = products.some(p => p.id === id);
-  if (!exists) return res.status(404).json({ error: "Product not found" });
-  products = products.filter(p => p.id !== id);
-  res.status(204).send(); // 204 No Content
-});
-
 // Обработка 404 для несуществующих маршрутов
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -347,5 +769,6 @@ app.use((err, req, res, next) => {
 // Запуск сервера
 app.listen(port, () => {
   console.log(`Сервер запущен на http://localhost:${port}`);
+  console.log(`JWT секрет: ${JWT_SECRET}`);
   console.log(`Swagger UI доступен по адресу http://localhost:${port}/api-docs`);
 });
