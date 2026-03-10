@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './ProductsPage.scss';
 import ProductList from '../../components/ProductList';
 import ProductModal from '../../components/ProductModal';
-import { api } from '../../api';
+import { api, auth } from '../../api';
 
 export default function ProductsPage() {
   const [products, setProducts] = useState([]);
@@ -10,10 +11,28 @@ export default function ProductsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('create');
   const [editingProduct, setEditingProduct] = useState(null);
+  const [user, setUser] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
+    // Проверяем авторизацию
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+    loadUser();
     loadProducts();
-  }, []);
+  }, [navigate]);
+
+  const loadUser = async () => {
+    try {
+      const userData = await auth.getCurrentUser();
+      setUser(userData);
+    } catch (err) {
+      console.error('Ошибка загрузки пользователя');
+    }
+  };
 
   const loadProducts = async () => {
     try {
@@ -26,6 +45,11 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    auth.logout();
+    navigate('/login');
   };
 
   const openCreate = () => {
@@ -78,7 +102,14 @@ export default function ProductsPage() {
       <header className="header">
         <div className="header__inner">
           <div className="brand">Shop Admin</div>
-          <div className="header__right">React</div>
+          <div className="header__right" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {user && (
+              <span>{user.first_name} {user.last_name}</span>
+            )}
+            <button className="btn" onClick={handleLogout} style={{ opacity: 0.8 }}>
+              Выйти
+            </button>
+          </div>
         </div>
       </header>
       <main className="main">

@@ -1,7 +1,9 @@
-# Интернет-магазин (Fullstack с JWT аутентификацией)
+# Интернет-магазин (Fullstack с JWT аутентификацией и refresh-токенами)
 
-- **Сервер**: Node.js + Express, REST API с JWT аутентификацией и Swagger документацией
-- **Клиент**: React, взаимодействие с API через axios
+Полноценное веб-приложение интернет-магазина с системой аутентификации на JWT токенах, refresh-механизмом и автоматическим обновлением токенов на клиенте.
+
+- **Сервер**: Node.js + Express, REST API с JWT аутентификацией, refresh-токенами и Swagger документацией
+- **Клиент**: React + React Router, взаимодействие с API через axios с перехватчиками запросов/ответов
 
 ## Технологии
 
@@ -9,21 +11,22 @@
 - **Node.js** + **Express** — серверная платформа
 - **nanoid** — генерация уникальных ID
 - **cors** — кросс-доменные запросы
-- **bcrypt** / **bcryptjs** — хеширование паролей
-- **jsonwebtoken** — JWT токены для аутентификации
+- **bcryptjs** — хеширование паролей
+- **jsonwebtoken** — JWT токены (access + refresh)
 - **swagger-jsdoc** + **swagger-ui-express** — автоматическая документация API
 
 ### Frontend
 - **React** (Create React App)
-- **Axios** — HTTP клиент
-- **Sass** — стилизация
-- **React Hooks** (useState, useEffect)
+- **React Router DOM** — маршрутизация
+- **Axios** — HTTP клиент с перехватчиками (interceptors)
+- **Sass** — стилизация (SCSS модули)
+- **React Hooks** (useState, useEffect) — управление состоянием
 
 ## Требования
 
 - Node.js (версия 14 или выше)
 - npm или yarn
-- Postman (опционально, для тестирования API)
+- Postman / Insomnia (опционально, для тестирования API)
 
 ## Установка и запуск
 
@@ -49,7 +52,7 @@ node index.js
 ### 4. Установка зависимостей для клиента
 ```bash
 cd ../client
-npm install
+npm install axios react-router-dom
 ```
 
 ### 5. Запуск клиента (в отдельном терминале)
@@ -71,22 +74,32 @@ npm start
 - Просмотр ответов и кодов статуса
 - Авторизация через JWT токен (кнопка "Authorize")
 
-## Аутентификация (JWT)
+## Аутентификация (JWT + Refresh Tokens)
 
-В проекте реализована полноценная система аутентификации:
+В проекте реализована двухуровневая система аутентификации:
 
-### Процесс работы:
+### 🔑 Типы токенов
+
+| Токен | Время жизни | Назначение |
+|-------|-------------|------------|
+| **Access Token** | 15 минут | Доступ к защищенным ресурсам API |
+| **Refresh Token** | 7 дней | Получение новой пары токенов |
+
+### 🔄 Процесс работы:
 1. **Регистрация** — пользователь создает аккаунт (пароль хешируется bcrypt)
-2. **Вход** — при успешном входе сервер возвращает JWT токен
-3. **Защищенные маршруты** — требуют передачи токена в заголовке `Authorization: Bearer <token>`
-4. **Информация о пользователе** — эндпоинт `/api/auth/me` возвращает данные текущего пользователя
+2. **Вход** — сервер возвращает пару токенов (access + refresh)
+3. **Хранение** — оба токена сохраняются в localStorage
+4. **Запросы** — access token автоматически подставляется в заголовок `Authorization`
+5. **Обновление** — при истечении access token (401) автоматически отправляется refresh token
+6. **Ротация** — каждый раз создается новая пара, старый refresh token становится недействительным
 
 ### Эндпоинты аутентификации
 
 | Метод | Эндпоинт | Описание | Защита |
 |-------|----------|----------|--------|
 | POST | `/api/auth/register` | Регистрация нового пользователя | Нет |
-| POST | `/api/auth/login` | Вход в систему, получение JWT токена | Нет |
+| POST | `/api/auth/login` | Вход, получение пары токенов | Нет |
+| POST | `/api/auth/refresh` | Обновление пары токенов | Refresh Token |
 | GET | `/api/auth/me` | Информация о текущем пользователе | ✅ JWT |
 
 ### Модель пользователя
@@ -105,7 +118,6 @@ npm start
 | Метод | Эндпоинт | Описание | Защита |
 |-------|----------|----------|--------|
 | GET | `/api/products` | Получить список всех товаров | Нет |
-| GET | `/api/products/paged` | Получить товары с пагинацией | Нет |
 | POST | `/api/products` | Создать новый товар | Нет |
 | GET | `/api/products/{id}` | Получить товар по ID | ✅ JWT |
 | PUT | `/api/products/{id}` | Полностью обновить товар | ✅ JWT |
@@ -126,14 +138,59 @@ npm start
 }
 ```
 
+## Клиентская часть (Frontend)
+
+### 🧩 Компоненты
+- **ProductList** — отображение списка товаров
+- **ProductItem** — карточка товара с кнопками действий
+- **ProductModal** — модальное окно создания/редактирования
+- **LoginPage / RegisterPage** — страницы аутентификации
+
+### 🔄 Автоматизация с Axios Interceptors
+
+**Request Interceptor** — автоматически добавляет токен в каждый запрос:
+```javascript
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('accessToken');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+```
+
+**Response Interceptor** — автоматически обновляет токены при 401 ошибке:
+```javascript
+apiClient.interceptors.response.use(
+  response => response,
+  async error => {
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      // 1. Отправляем refresh token
+      // 2. Получаем новую пару
+      // 3. Сохраняем новые токены
+      // 4. Повторяем исходный запрос
+    }
+  }
+);
+```
+
+### 🛡️ Защита маршрутов
+- Без токена — перенаправление на `/login`
+- При истечении токена — автоматическое обновление
+- При ошибке refresh — выход из системы
+
 ## Тестирование API
 
 ### Через Swagger UI:
 1. Откройте http://localhost:3000/api-docs
 2. Зарегистрируйтесь через `POST /api/auth/register`
-3. Войдите через `POST /api/auth/login`, скопируйте полученный токен
-4. Нажмите кнопку **"Authorize"** (замок) и вставьте токен
-5. Теперь можно тестировать защищенные маршруты
+3. Войдите через `POST /api/auth/login` — получите `accessToken` и `refreshToken`
+4. Нажмите **"Authorize"** и вставьте `accessToken`
+5. Тестируйте защищенные маршруты
+
+### Через клиентское приложение:
+1. Откройте http://localhost:3001
+2. Зарегистрируйтесь / войдите
+3. Управляйте товарами через интерфейс
+4. Токены автоматически сохраняются и обновляются
 
 ### Через Postman:
 
@@ -161,37 +218,30 @@ Content-Type: application/json
 }
 ```
 
+**Обновление токенов:**
+```json
+POST http://localhost:3000/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
 **Защищенный запрос:**
 ```json
 GET http://localhost:3000/api/products/abc123
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-### Через curl:
-
-```bash
-# Регистрация
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","first_name":"Иван","last_name":"Петров","password":"qwerty123"}'
-
-# Вход
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com","password":"qwerty123"}'
-
-# Защищенный запрос с токеном
-curl -X GET http://localhost:3000/api/products/abc123 \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-```
-
 ## Безопасность
 
-- ✅ **Пароли хешируются** с помощью bcrypt (соль встроена в алгоритм)
-- ✅ **JWT токены** с ограниченным временем жизни (15 минут)
-- ✅ **Защищенные маршруты** требуют валидный токен
-- ✅ **Пароль никогда не возвращается** в ответах сервера
-- ✅ **CORS настроен** только для доверенного источника (http://localhost:3001)
+- ✅ **Пароли хешируются** bcrypt (соль + 10 раундов)
+- ✅ **Access токены** живут 15 минут (минимизация риска)
+- ✅ **Refresh токены** с ротацией (каждое использование создает новый)
+- ✅ **Хранилище** — localStorage (простота для учебного проекта)
+- ✅ **CORS** ограничен только доверенным источником
+- ✅ **JWT секреты** разделены для access и refresh токенов
 
 ## Структура проекта
 
@@ -200,13 +250,22 @@ fr2/
 ├── client/                          # React-клиент
 │   ├── public/
 │   └── src/
-│       ├── api/                     # Настройка axios запросов
-│       ├── components/               # React компоненты
-│       └── pages/                    # Страницы приложения
+│       ├── api/
+│       │   └── index.js             # Axios + interceptors
+│       ├── components/
+│       │   ├── ProductItem.jsx
+│       │   ├── ProductList.jsx
+│       │   └── ProductModal.jsx
+│       ├── pages/
+│       │   ├── LoginPage/           # Страница входа
+│       │   ├── ProductsPage/        # Управление товарами
+│       │   └── RegisterPage/        # Страница регистрации
+│       ├── App.js
+│       └── index.js
 │
 └── server/                          # Express сервер
-    └── index.js                      # Главный файл с JSDoc-аннотациями
-                                      # и всей логикой приложения
+    └── index.js                      # Основной файл с JSDoc-аннотациями
+                                      # и всей бизнес-логикой
 ```
 
 ## Выполненные практические работы
@@ -232,32 +291,62 @@ fr2/
 - Защита маршрутов (GET/:id, PUT, DELETE)
 - Эндпоинт `/api/auth/me` для получения данных пользователя
 
+### ✅ Практическая работа №9
+- Разделение access и refresh токенов
+- Хранилище активных refresh токенов
+- Эндпоинт `/api/auth/refresh` с ротацией токенов
+
+### ✅ Практическая работа №10
+- Хранение токенов в localStorage
+- Axios interceptors для автоматической подстановки токена
+- Автоматическое обновление токенов при 401 ошибке
+- Страницы входа и регистрации на React
+- Защита маршрутов и управление товарами
+
 ## Возможные проблемы и решения
 
-### Ошибка 500 при регистрации
-- Проверьте, установлен ли bcrypt: `npm list bcryptjs`
-- Убедитесь, что импорт работает: `const bcrypt = require('bcryptjs')`
+### ❌ Ошибка 500 при регистрации
+**Решение:** Проверьте установку bcryptjs
+```bash
+npm list bcryptjs
+npm install bcryptjs
+```
 
-### Ошибка 401 при запросе к защищенному маршруту
-- Проверьте, что токен передан в заголовке: `Authorization: Bearer <token>`
-- Токен мог истечь (живет 15 минут) — войдите снова
+### ❌ Ошибка 401 после входа
+**Решение:** Проверьте, что токен передается в заголовке
+```javascript
+// В DevTools → Application → LocalStorage
+localStorage.getItem('accessToken'); // должен быть не null
+```
 
-### CORS ошибки
-- Проверьте, что клиент запущен на порту 3001
-- В сервере должен быть разрешен `origin: 'http://localhost:3001'`
+### ❌ Токен не обновляется автоматически
+**Решение:** Проверьте interceptor в `api/index.js`
+- Должен обрабатывать 401 статус
+- Должен отправлять запрос на `/auth/refresh`
 
-## Разработка
+### ❌ CORS ошибки
+**Решение:** Проверьте настройки сервера
+```javascript
+// В server/index.js
+app.use(cors({
+  origin: 'http://localhost:3001',
+  credentials: true
+}));
+```
 
-### Добавление новых маршрутов
-1. Добавьте JSDoc аннотацию для Swagger
-2. Реализуйте логику маршрута
-3. При необходимости добавьте `authMiddleware` для защиты
+## Переменные окружения (для продакшена)
 
-### Переменные окружения (для продакшена)
 Создайте файл `.env` в папке `server`:
 ```env
-JWT_SECRET=ваш-секретный-ключ
+JWT_SECRET=ваш-супер-секретный-ключ
+REFRESH_SECRET=другой-секретный-ключ
 PORT=3000
+NODE_ENV=production
+```
+
+В папке `client` создайте `.env`:
+```env
+REACT_APP_API_URL=http://localhost:3000/api
 ```
 
 ---
