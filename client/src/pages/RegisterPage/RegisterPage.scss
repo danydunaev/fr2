@@ -1,0 +1,73 @@
+@import '../LoginPage/LoginPage.scss';
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 140px);
+}
+
+.login-card {
+  @include card(16px);
+  max-width: 400px;
+  width: 100%;
+  padding: 24px;
+  background: $panel;
+}
+
+.login-title {
+  font-size: 24px;
+  margin: 0 0 20px 0;
+  text-align: center;
+}
+
+.login-error {
+  background: $dangerBg;
+  border: 1px solid $danger;
+  color: $text;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+
+  .label {
+    font-size: 14px;
+    opacity: 0.9;
+  }
+
+  .login-btn {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px;
+    font-size: 16px;
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.login-footer {
+  text-align: center;
+  font-size: 14px;
+  opacity: 0.8;
+  border-top: 1px solid $border;
+  padding-top: 20px;
+
+  a {
+    color: $primary;
+    text-decoration: none;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
