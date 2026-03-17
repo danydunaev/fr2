@@ -1,0 +1,71 @@
+@import '../ProductsPage/ProductsPage.scss';
+
+.users-table {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid $border;
+
+  &-header {
+    display: grid;
+    grid-template-columns: 80px 1.5fr 1fr 1fr 120px 200px;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    font-weight: 600;
+    font-size: 14px;
+    border-bottom: 1px solid $border;
+  }
+
+  &-row {
+    display: grid;
+    grid-template-columns: 80px 1.5fr 1fr 1fr 120px 200px;
+    gap: 12px;
+    padding: 16px;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .user-id {
+      opacity: 0.7;
+      font-size: 13px;
+      font-family: monospace;
+    }
+
+    .role-badge {
+      padding: 4px 8px;
+      border-radius: 20px;
+      font-size: 12px;
+      display: inline-block;
+
+      &.role-user {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      &.role-seller {
+        background: rgba(99, 102, 241, 0.2);
+        border: 1px solid rgba(99, 102, 241, 0.5);
+        color: #a5b4fc;
+      }
+
+      &.role-admin {
+        background: rgba(239, 68, 68, 0.2);
+        border: 1px solid rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
+      }
+    }
+
+    .user-actions {
+      display: flex;
+      gap: 8px;
+    }
+  }
+}

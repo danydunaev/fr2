@@ -8,7 +8,7 @@ const apiClient = axios.create({
   }
 });
 
-// Перехватчик запросов - добавляет токен в каждый запрос
+// Перехватчик запросов - добавляет токен
 apiClient.interceptors.request.use(
   (config) => {
     const accessToken = localStorage.getItem('accessToken');
@@ -20,20 +20,18 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Перехватчик ответов - обрабатывает ошибку 401 (токен истек)
+// Перехватчик ответов - обновляет токен при 401
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
     
-    // Если ошибка 401 и это не повторный запрос
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       
       const refreshToken = localStorage.getItem('refreshToken');
       const accessToken = localStorage.getItem('accessToken');
       
-      // Если нет токенов - очищаем и редирект
       if (!refreshToken || !accessToken) {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
@@ -42,18 +40,15 @@ apiClient.interceptors.response.use(
       }
       
       try {
-        // Пробуем обновить токены
         const response = await axios.post(`${apiClient.defaults.baseURL}/auth/refresh`, {
           refreshToken
         });
         
         const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
         
-        // Сохраняем новые токены
         localStorage.setItem('accessToken', newAccessToken);
         localStorage.setItem('refreshToken', newRefreshToken);
         
-        // Обновляем заголовок и повторяем исходный запрос
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(originalRequest);
       } catch (refreshError) {
@@ -80,6 +75,8 @@ export const auth = {
     if (response.data.accessToken && response.data.refreshToken) {
       localStorage.setItem('accessToken', response.data.accessToken);
       localStorage.setItem('refreshToken', response.data.refreshToken);
+      // Сохраняем роль пользователя
+      localStorage.setItem('userRole', response.data.user.role);
     }
     return response.data;
   },
@@ -87,6 +84,7 @@ export const auth = {
   logout: () => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('userRole');
   },
   
   getCurrentUser: async () => {
@@ -95,25 +93,62 @@ export const auth = {
   }
 };
 
-// API для товаров (сохраняем ваши названия методов)
-export const api = {
-  getProducts: async () => {
+// API для пользователей (только админ)
+export const users = {
+  getAll: async () => {
+    const response = await apiClient.get('/users');
+    return response.data;
+  },
+  
+  getById: async (id) => {
+    const response = await apiClient.get(`/users/${id}`);
+    return response.data;
+  },
+  
+  update: async (id, userData) => {
+    const response = await apiClient.put(`/users/${id}`, userData);
+    return response.data;
+  },
+  
+  delete: async (id) => {
+    await apiClient.delete(`/users/${id}`);
+  }
+};
+
+// API для товаров
+export const products = {
+  getAll: async () => {
     const response = await apiClient.get('/products');
     return response.data;
   },
-  getProductById: async (id) => {
+  
+  getById: async (id) => {
     const response = await apiClient.get(`/products/${id}`);
     return response.data;
   },
-  createProduct: async (product) => {
-    const response = await apiClient.post('/products', product);
+  
+  create: async (productData) => {
+    const response = await apiClient.post('/products', productData);
     return response.data;
   },
-  updateProduct: async (id, product) => {
-    const response = await apiClient.put(`/products/${id}`, product);
+  
+  update: async (id, productData) => {
+    const response = await apiClient.put(`/products/${id}`, productData);
     return response.data;
   },
-  deleteProduct: async (id) => {
+  
+  delete: async (id) => {
     await apiClient.delete(`/products/${id}`);
   }
+};
+
+// Хелпер для проверки роли
+export const hasRole = (role) => {
+  const userRole = localStorage.getItem('userRole');
+  if (!userRole) return false;
+  
+  if (Array.isArray(role)) {
+    return role.includes(userRole);
+  }
+  return userRole === role;
 };
