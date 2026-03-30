@@ -6,15 +6,21 @@ const webpush = require('web-push');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // ==================== VAPID КЛЮЧИ ====================
 const vapidKeys = {
-    publicKey: 'REMOVED_OLD_VAPID_PUBLIC_KEY',
-    privateKey: 'REMOVED_OLD_VAPID_PRIVATE_KEY'
+    publicKey: process.env.VAPID_PUBLIC_KEY || '',
+    privateKey: process.env.VAPID_PRIVATE_KEY || ''
 };
 
+if (!vapidKeys.publicKey || !vapidKeys.privateKey) {
+    console.error('[Server] ❌ VAPID keys are missing. Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in environment variables.');
+    process.exit(1);
+}
+
 webpush.setVapidDetails(
-    'mailto:dev@example.com',
+    process.env.VAPID_SUBJECT || 'mailto:dev@example.com',
     vapidKeys.publicKey,
     vapidKeys.privateKey
 );

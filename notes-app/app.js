@@ -188,6 +188,25 @@ socket.on('reminderDue', (data) => {
 
 // ==================== PUSH УВЕДОМЛЕНИЯ ====================
 
+let cachedVapidPublicKey = null;
+
+async function getVapidPublicKey() {
+    if (cachedVapidPublicKey) return cachedVapidPublicKey;
+
+    const response = await fetch('https://localhost:3003/server-info');
+    if (!response.ok) {
+        throw new Error(`Не удалось получить server-info: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data?.vapidPublicKey) {
+        throw new Error('Сервер не вернул vapidPublicKey');
+    }
+
+    cachedVapidPublicKey = data.vapidPublicKey;
+    return cachedVapidPublicKey;
+}
+
 // Преобразование base64 ключа в формат Uint8Array
 function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -248,11 +267,13 @@ async function subscribeToPush() {
         console.log('[Push] ⏳ Ожидание готовности Service Worker...');
         const registration = await navigator.serviceWorker.ready;
         console.log('[Push] ✅ Service Worker готов:', registration.scope);
+
+        const vapidPublicKey = await getVapidPublicKey();
         
         console.log('[Push] ⏳ Подписка на push...');
         const subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array('REMOVED_OLD_VAPID_PUBLIC_KEY')
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
         });
         console.log('[Push] ✅ Подписка успешна:', subscription.endpoint.substring(0, 50) + '...');
         
