@@ -1,0 +1,76 @@
+<div class="home-content">
+    <h2 style="margin-bottom: 20px; font-size: 20px; font-weight: 600;">Добавить заметку</h2>
+    
+    <form id="note-form" style="display: flex; gap: 12px; margin-bottom: 30px;">
+        <input 
+            type="text" 
+            id="note-input" 
+            placeholder="Введите текст заметки..." 
+            required
+            autocomplete="off"
+            style="flex: 1; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.04); color: inherit; font-size: 14px;"
+        >
+        <button 
+            type="submit"
+            style="padding: 12px 24px; border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.55); background: rgba(99, 102, 241, 0.18); color: inherit; cursor: pointer; font-weight: 600; white-space: nowrap;"
+        >
+            ➕ Добавить
+        </button>
+    </form>
+
+    <h3 style="margin-bottom: 16px; font-size: 16px; font-weight: 600; margin-top: 24px;">Добавить заметку с напоминанием</h3>
+    
+    <form id="reminder-form" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+        <input 
+            type="text" 
+            id="reminder-text" 
+            placeholder="Текст напоминания..." 
+            required
+            autocomplete="off"
+            style="padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.04); color: inherit; font-size: 14px;"
+        >
+        
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <input 
+                type="datetime-local" 
+                id="reminder-time"
+                step="60"
+                autocomplete="off"
+                style="flex: 1; min-width: 200px; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.04); color: inherit; font-size: 14px;"
+            >
+            <button 
+                type="submit"
+                style="padding: 12px 24px; border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.55); background: rgba(34, 197, 94, 0.18); color: #86efac; cursor: pointer; font-weight: 600; white-space: nowrap;"
+            >
+                ⏰ Напомнить
+            </button>
+        </div>
+
+        <div id="reminder-preview" style="font-size: 12px; opacity: 0.85; min-height: 18px; margin-top: -2px;"></div>
+    </form>
+
+    <div style="margin-bottom: 20px;">
+        <p style="font-size: 12px; opacity: 0.7; margin-bottom: 8px;">Быстрые напоминания:</p>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="quick-reminder-btn" data-minutes="30" style="padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(168, 85, 247, 0.45); background: rgba(168, 85, 247, 0.12); color: #d8b4fe; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">
+                📌 Через 30 мин
+            </button>
+            <button class="quick-reminder-btn" data-minutes="60" style="padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(168, 85, 247, 0.45); background: rgba(168, 85, 247, 0.12); color: #d8b4fe; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">
+                📌 Через час
+            </button>
+            <button class="quick-reminder-btn" data-minutes="120" style="padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(168, 85, 247, 0.45); background: rgba(168, 85, 247, 0.12); color: #d8b4fe; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">
+                📌 Через 2 часа
+            </button>
+            <button class="quick-reminder-btn" data-type="tomorrow-morning" style="padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(168, 85, 247, 0.45); background: rgba(168, 85, 247, 0.12); color: #d8b4fe; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">
+                📌 Завтра 9:00
+            </button>
+            <button class="quick-reminder-btn" data-type="tomorrow-evening" style="padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(168, 85, 247, 0.45); background: rgba(168, 85, 247, 0.12); color: #d8b4fe; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;">
+                📌 Завтра 18:00
+            </button>
+        </div>
+    </div>
+
+    <h2 style="margin-bottom: 16px; font-size: 18px; font-weight: 600;">Список заметок</h2>
+    
+    <div id="notes-list-container" style="display: flex; flex-direction: column; gap: 10px;"></div>
+</div>
